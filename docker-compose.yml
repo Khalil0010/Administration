@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "8000:8000"
+    networks:
+      - savewise-network
+
+  user-service:
+    build: ./user-service
+    ports:
+      - "8001:8001"
+    networks:
+      - savewise-network
+
+  transaction-service:
+    build: ./transaction-service
+    ports:
+      - "8002:8002"
+    networks:
+      - savewise-network
+
+  budget-service:
+    build: ./budget-service
+    ports:
+      - "8003:8003"
+    networks:
+      - savewise-network
+
+  saving-goals-service:
+    build: ./saving-goals-service
+    ports:
+      - "8004:8004"
+    networks:
+      - savewise-network
+
+  analytics-service:
+    build: ./analytics-service
+    ports:
+      - "8005:8005"
+    environment:
+      - TRANSACTION_SERVICE_URL=http://transaction-service:8002
+    networks:
+      - savewise-network
+
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "8006:8006"
+    networks:
+      - savewise-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - auth-service
+      - transaction-service
+    networks:
+      - savewise-network
+
+networks:
+  savewise-network:
+    driver: bridge
