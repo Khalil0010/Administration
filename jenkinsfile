@@ -1,35 +1,39 @@
 pipeline {
     agent any
-
+    
     environment {
-        GITHUB_REPO            = "https://github.com/AzizSoftware/Administration.git"
-        DOCKER_REGISTRY        = "aziz244"
-        IMAGE_TAG              = "1.0"
-        NAMESPACE              = "savewise"
-        KUBECONFIG_CREDENTIALS = "kubeconfig-id"  // ID de la credential Jenkins contenant le kubeconfig
+        GITHUB_REPO = "https://github.com/AzizSoftware/Administration.git"
+        DOCKER_REGISTRY = "aziz244"
+        NAMESPACE = "savewise"
+        KUBECONFIG_CREDENTIALS = "kubeconfig-id"
     }
-
+    
     options {
         timestamps()
         buildDiscarder(logRotator(numToKeepStr: '10'))
     }
-
+    
     stages {
         stage('Clone Repository') {
             steps {
                 git branch: 'main', url: "${env.GITHUB_REPO}"
             }
         }
-
+        
         stage('Install Dependencies') {
             steps {
                 script {
                     def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
+                        'analytics-service',
+                        'auth-service',
+                        'budget-service',
+                        'frontend',
+                        'notification-service',
+                        'saving-goals-service',
+                        'transaction-service',
+                        'user-service'
                     ]
-
+                    
                     services.each { svc ->
                         dir("${svc}") {
                             sh 'python -m venv venv'
@@ -40,26 +44,30 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Build Docker Images') {
             steps {
                 script {
                     def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
+                        'analytics-service',
+                        'auth-service',
+                        'budget-service',
+                        'frontend',
+                        'notification-service',
+                        'saving-goals-service',
+                        'transaction-service',
+                        'user-service'
                     ]
-
+                    
                     services.each { svc ->
                         dir("${svc}") {
-                            def image = "${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
-                            sh "docker build -t ${image} ."
+                            sh "docker build -t ${DOCKER_REGISTRY}/${svc}:1.0 ."
                         }
                     }
                 }
             }
         }
-
+        
         stage('Prepare Trivy') {
             steps {
                 script {
@@ -84,68 +92,77 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Run Trivy Scan') {
             steps {
                 script {
                     def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
+                        'analytics-service',
+                        'auth-service',
+                        'budget-service',
+                        'frontend',
+                        'notification-service',
+                        'saving-goals-service',
+                        'transaction-service',
+                        'user-service'
                     ]
-
+                    
                     services.each { svc ->
-                        def image = "${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
-                        echo "Scanning ${image} ..."
-                        def status = sh(
-                            script: "./trivy-bin/trivy image --exit-code 1 --no-progress --severity HIGH,CRITICAL ${image}",
+                        echo "Scanning ${svc} image..."
+                        def trivyStatus = sh(
+                            script: "./trivy-bin/trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/${svc}:1.0",
                             returnStatus: true
                         )
-                        if (status != 0) {
-                            error("❌ Trivy scan failed: HIGH/CRITICAL vulnerabilities found in ${svc}")
+                        
+                        if (trivyStatus != 0) {
+                            error("❌ Trivy scan found HIGH/CRITICAL vulnerabilities in ${svc}.")
                         } else {
-                            echo "✅ ${svc} passed Trivy scan (no HIGH/CRITICAL vulnerabilities)"
+                            echo "✅ ${svc} image passed Trivy scan."
                         }
                     }
                 }
             }
         }
-
+        
         stage('Push Docker Images') {
             steps {
-                // Ajout recommandé : login Docker si nécessaire (à adapter selon votre registry)
-                // withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                //     sh 'echo $PASS | docker login -u $USER --password-stdin'
-                // }
-
                 script {
                     def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
+                        'analytics-service',
+                        'auth-service',
+                        'budget-service',
+                        'frontend',
+                        'notification-service',
+                        'saving-goals-service',
+                        'transaction-service',
+                        'user-service'
                     ]
-
+                    
                     services.each { svc ->
-                        def image = "${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
-                        sh "docker push ${image}"
+                        sh "docker push ${DOCKER_REGISTRY}/${svc}:1.0"
                     }
                 }
             }
         }
-
+        
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG')]) {
-                    sh 'kubectl apply -f k8s/namespace.yaml'
-                    sh 'kubectl apply -f k8s/frontend/deployment.yaml'
-
                     script {
+                        // Apply namespace first
+                        sh 'kubectl apply -f k8s/namespace.yaml'
+                        
                         def services = [
-                            'analytics-service', 'auth-service', 'budget-service',
-                            'frontend', 'notification-service', 'saving-goals-service',
-                            'transaction-service', 'user-service'
+                            'analytics-service',
+                            'auth-service',
+                            'budget-service',
+                            'frontend',
+                            'notification-service',
+                            'saving-goals-service',
+                            'transaction-service',
+                            'user-service'
                         ]
-
+                        
                         services.each { svc ->
                             sh "kubectl apply -f k8s/${svc}/deployment.yaml"
                             sh "kubectl apply -f k8s/${svc}/service.yaml"
@@ -154,44 +171,40 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Smoke Test') {
             steps {
                 script {
                     def urls = [
-                        "auth-service"        : "http://auth-service.savewise.svc.cluster.local:8000/health",
-                        "user-service"        : "http://user-service.savewise.svc.cluster.local:8001/health",
-                        "budget-service"      : "http://budget-service.savewise.svc.cluster.local:8003/health",
-                        "frontend"            : "http://frontend.savewise.svc.cluster.local:8501",
-                        "transaction-service" : "http://transaction-service.savewise.svc.cluster.local:8002/health",
-                        "notification-service": "http://notification-service.savewise.svc.cluster.local:8006/health",
-                        "saving-goals-service": "http://saving-goals-service.savewise.svc.cluster.local:8004/health",
-                        "analytics-service"   : "http://analytics-service.savewise.svc.cluster.local:8005/health"
+                        "auth-service": "http://auth-service:8000/health",
+                        "user-service": "http://user-service:8001/health",
+                        "budget-service": "http://budget-service:8003/health",
+                        "frontend": "http://frontend:8501",
+                        "transaction-service": "http://transaction-service:8002/health",
+                        "notification-service": "http://notification-service:8006/health",
+                        "saving-goals-service": "http://saving-goals-service:8004/health",
+                        "analytics-service": "http://analytics-service:8005/health"
                     ]
-
+                    
                     urls.each { name, url ->
                         try {
-                            sh "curl -sSf --max-time 30 ${url}"
-                            echo "✅ ${name} is UP and healthy"
+                            sh "curl -sSf ${url} || exit 1"
+                            echo "${name} is UP"
                         } catch (err) {
-                            error "❌ Smoke test failed: ${name} is not reachable (${url})"
+                            error "${name} failed the smoke test!"
                         }
                     }
                 }
             }
         }
     }
-
+    
     post {
         success {
-            echo "Pipeline completed successfully! 🚀"
+            echo "Pipeline completed successfully!"
         }
         failure {
-            echo "Pipeline failed! Please check the logs. ❌"
-        }
-        cleanup {
-            // Nettoyage optionnel des images locales si besoin
-            // sh 'docker rmi $(docker images ${DOCKER_REGISTRY}/*:${IMAGE_TAG} -q) || true'
+            echo "Pipeline failed!"
         }
     }
 }
