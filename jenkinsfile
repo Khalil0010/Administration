@@ -31,7 +31,7 @@ pipeline {
                     ]
                     services.each { svc ->
                         dir(svc) {
-                            bat 'py -m venv venv'
+                            bat '"C:\\Users\\HP\\AppData\\Local\\Programs\\Python\\Launcher\\py.exe" -m venv venv'
                             bat '.\\venv\\Scripts\\pip.exe install --upgrade pip'
                             bat '.\\venv\\Scripts\\pip.exe install -r requirements.txt'
                         }
