@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: savewise
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: frontend:1.0
+        ports:
+        - containerPort: 8501
+        env:
+          - name: AUTH_SERVICE_URL
+            value: http://auth-service:8000
+          - name: USER_SERVICE_URL
+            value: http://user-service:8001
+          - name: TRANSACTION_SERVICE_URL
+            value: http://transaction-service:8002
+          - name: BUDGET_SERVICE_URL
+            value: http://budget-service:8003
+          - name: SAVINGS_SERVICE_URL
+            value: http://saving-goals-service:8004
+          - name: ANALYTICS_SERVICE_URL
+            value: http://analytics-service:8005
+          - name: NOTIFICATIONS_SERVICE_URL
+            value: http://notification-service:8006

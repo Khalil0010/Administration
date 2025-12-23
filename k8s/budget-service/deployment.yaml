@@ -1,0 +1,55 @@
+# =========================
+# Budget Service Deployment
+# =========================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: budget-service
+  namespace: savewise
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: budget-service
+  template:
+    metadata:
+      labels:
+        app: budget-service
+    spec:
+      containers:
+        - name: budget-service
+          image: budget-service:1.0
+          ports:
+            - containerPort: 8003
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+---
+
+# =========================
+# Budget Service HPA
+# =========================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: budget-service-hpa
+  namespace: savewise
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: budget-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

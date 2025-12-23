@@ -9,13 +9,13 @@ st.set_page_config(page_title="SaveWise - Pilotage Financier", layout="wide", pa
 
 # --- RÉSEAU DES MICROSERVICES (DNS Docker) ---
 SERVICES = {
-    "auth": "http://auth-service:8000",
-    "user": "http://user-service:8001",
-    "tx": "http://transaction-service:8002",
-    "budget": "http://budget-service:8003",
-    "savings": "http://saving-goals-service:8004",
-    "analytics": "http://analytics-service:8005",
-    "notifications": "http://notification-service:8006"
+    "auth": "http://auth-service.savewise:8000",
+    "user": "http://user-service.savewise:8001",
+    "tx": "http://transaction-service.savewise:8002",
+    "budget": "http://budget-service.savewise:8003",
+    "savings": "http://saving-goals-service.savewise:8004",
+    "analytics": "http://analytics-service.savewise:8005",
+    "notifications": "http://notification-service.savewise:8006"
 }
 
 # --- GESTION DE LA SESSION ---

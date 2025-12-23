@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: saving-goals-service
+  namespace: savewise
+spec:
+  type: ClusterIP
+  selector:
+    app: saving-goals-service
+  ports:
+    - port: 8004
+      targetPort: 8004

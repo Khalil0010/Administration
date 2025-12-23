@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: saving-goals-service
+  namespace: savewise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: saving-goals-service
+  template:
+    metadata:
+      labels:
+        app: saving-goals-service
+    spec:
+      containers:
+        - name: saving-goals-service
+          image: saving-goals-service:1.0
+          ports:
+            - containerPort: 8004

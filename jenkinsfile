@@ -1,0 +1,141 @@
+pipeline {
+    agent any
+    environment {
+        // Replace these with your actual values
+        GITHUB_REPO = "https://github.com/yourusername/yourrepo.git"
+        DOCKER_REGISTRY = "your-docker-registry"
+        NAMESPACE = "savewise"
+        KUBECONFIG_CREDENTIALS = "kubeconfig-id"
+        SONARQUBE = "SonarQube" // Name of SonarQube server configured in Jenkins
+    }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    stages {
+
+        stage('Clone Repository') {
+            steps {
+                git branch: 'main', url: "${env.GITHUB_REPO}"
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    // Loop over all microservices
+                    def services = ['analytics-service', 'auth-service', 'budget-service', 
+                                    'frontend', 'notification-service', 'saving-goals-service', 
+                                    'transaction-service', 'user-service']
+                    services.each { svc ->
+                        dir("${svc}") {
+                            sh 'python -m venv venv'
+                            sh './venv/Scripts/pip install --upgrade pip'
+                            sh './venv/Scripts/pip install -r requirements.txt'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Scan & PDF Report') {
+            steps {
+                script {
+                    def services = ['analytics-service', 'auth-service', 'budget-service', 
+                                    'frontend', 'notification-service', 'saving-goals-service', 
+                                    'transaction-service', 'user-service']
+                    services.each { svc ->
+                        dir("${svc}") {
+                            withSonarQubeEnv("${SONARQUBE}") {
+                                sh "sonar-scanner -Dsonar.projectKey=${svc} -Dsonar.sources=."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    def services = ['analytics-service', 'auth-service', 'budget-service', 
+                                    'frontend', 'notification-service', 'saving-goals-service', 
+                                    'transaction-service', 'user-service']
+                    services.each { svc ->
+                        dir("${svc}") {
+                            sh "docker build -t ${DOCKER_REGISTRY}/${svc}:1.0 ."
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Images') {
+            steps {
+                script {
+                    def services = ['analytics-service', 'auth-service', 'budget-service', 
+                                    'frontend', 'notification-service', 'saving-goals-service', 
+                                    'transaction-service', 'user-service']
+                    services.each { svc ->
+                        sh "docker push ${DOCKER_REGISTRY}/${svc}:1.0"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS}", variable: 'KUBECONFIG')]) {
+                    sh 'kubectl apply -f k8s/namespace.yaml'
+
+                    def services = ['analytics-service', 'auth-service', 'budget-service', 
+                                    'frontend', 'notification-service', 'saving-goals-service', 
+                                    'transaction-service', 'user-service']
+
+                    services.each { svc ->
+                        sh "kubectl apply -f k8s/${svc}/deployment.yaml"
+                        sh "kubectl apply -f k8s/${svc}/service.yaml"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test') {
+            steps {
+                script {
+                    def urls = [
+                        "auth-service": "http://auth-service:8000/health",
+                        "user-service": "http://user-service:8001/health",
+                        "budget-service": "http://budget-service:8003/health",
+                        "frontend": "http://frontend:8501",
+                        "transaction-service": "http://transaction-service:8002/health",
+                        "notification-service": "http://notification-service:8006/health",
+                        "saving-goals-service": "http://saving-goals-service:8004/health",
+                        "analytics-service": "http://analytics-service:8005/health"
+                    ]
+
+                    urls.each { name, url ->
+                        try {
+                            sh "curl -sSf ${url} || exit 1"
+                            echo "${name} is UP"
+                        } catch (err) {
+                            error "${name} failed the smoke test!"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed!"
+        }
+    }
+}

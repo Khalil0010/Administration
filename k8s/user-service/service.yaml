@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: savewise
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+    - port: 8001
+      targetPort: 8001
+  

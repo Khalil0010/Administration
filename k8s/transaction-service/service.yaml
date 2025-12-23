@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-service
+  namespace: savewise
+spec:
+  type: ClusterIP
+  selector:
+    app: transaction-service
+  ports:
+    - port: 8002
+      targetPort: 8002
