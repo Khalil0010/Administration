@@ -60,6 +60,7 @@ pipeline {
         stage('Run Trivy Scan') {
             steps {
                 script {
+                    // Assuming Trivy is already installed and in PATH on Windows agent
                     def services = [
                         'analytics-service', 'auth-service', 'budget-service',
                         'frontend', 'notification-service', 'saving-goals-service',
@@ -67,27 +68,13 @@ pipeline {
                     ]
                     services.each { svc ->
                         def image = "${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
-                        echo "🔍 Scanning ${image} for HIGH/CRITICAL vulnerabilities..."
-
-                        // Run Trivy without failing on vulnerabilities (--exit-code 0)
-                        // Capture full output for logging
-                        def scanOutput = bat(
-                            script: "trivy image --exit-code 0 --no-progress --severity HIGH,CRITICAL --format table ${image}",
-                            returnStdout: true
-                        ).trim()
-
-                        // Always display the results
-                        echo "=== Trivy Scan Results for ${svc} ===\n${scanOutput}\n"
-
-                        // Optional: add a warning if vulnerabilities were found
-                        if (scanOutput.contains("Total:") && !scanOutput.contains("Total: 0")) {
-                            echo "⚠️  WARNING: HIGH or CRITICAL vulnerabilities detected in ${svc}. Review the results above."
-                            echo "   Pipeline continues anyway (non-blocking scan)."
-                        } else {
-                            echo "✅ No HIGH/CRITICAL vulnerabilities found in ${svc}"
+                        echo "Scanning ${image}..."
+                        def status = bat(script: "trivy image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${image}", returnStatus: true)
+                        if (status != 0) {
+                            error("❌ HIGH/CRITICAL vulnerabilities found in ${svc}")
                         }
+                        echo "✅ ${svc} passed Trivy scan"
                     }
-                    echo "🛡️  All Trivy scans completed (non-blocking mode)."
                 }
             }
         }
