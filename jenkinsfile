@@ -60,19 +60,17 @@ pipeline {
         stage('Run Trivy Scan') {
             steps {
                 script {
+                    // Assuming Trivy is already installed and in PATH on Windows agent
                     def services = [
                         'analytics-service', 'auth-service', 'budget-service',
                         'frontend', 'notification-service', 'saving-goals-service',
                         'transaction-service', 'user-service'
                     ]
-
                     services.each { svc ->
                         def image = "${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
                         echo "Scanning ${image}..."
 
-                        bat """
-                        trivy image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${image}
-                        """
+                        bat """ trivy image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${image}"""
 
                         echo "⚠ Trivy scan completed for ${svc} (results are informational only)"
                     }
