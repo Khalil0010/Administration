@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        GITHUB_REPO            = "https://github.com/AzizSoftware/Administration.git"
+        GITHUB_REPO            = "https://github.com/Khalil0010/Administration.git"
         DOCKER_REGISTRY        = "aziz244"
         IMAGE_TAG              = "1.0"
         KUBECONFIG_CREDENTIALS = "kubeconfig-id"
