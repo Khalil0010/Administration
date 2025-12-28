@@ -329,19 +329,25 @@ pipeline {
         stage('Setup Minikube') {
             steps {
                 script {
-                    echo "Checking Minikube status..."
-                    def status = bat(script: '@minikube status', returnStatus: true)
+                    echo "Checking Minikube health..."
+                    // We check for 'Running' in the output of status
+                    def statusInfo = bat(script: '@minikube status', returnStdout: true).trim()
+                    echo "Current Status: ${statusInfo}"
                     
-                    if (status != 0) {
-                        echo "Minikube is not running. Attempting to start..."
-                        // We add --wait=all to ensure the cluster is ready before moving to the next stage
-                        bat "minikube start --driver=docker --wait=all"
+                    if (statusInfo.contains('Stopped') || statusInfo.contains('Error') || !statusInfo.contains('host: Running')) {
+                        echo "⚠️ Minikube is in a bad state or stopped. Resetting..."
+                        // Delete ensures we don't try to use a corrupted container
+                        bat "minikube delete"
+                        
+                        echo "Starting Minikube fresh..."
+                        // Reduced resources to ensure stability on the Jenkins host
+                        bat "minikube start --driver=docker --cpus=2 --memory=2048 --wait=all"
                     } else {
-                        echo "✅ Minikube is already running."
+                        echo "✅ Minikube is healthy."
                     }
                     
+                    // Helpful for debugging if it fails again
                     bat "kubectl get nodes"
-                    // Ensure namespace exists
                     bat "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
                 }
             }
