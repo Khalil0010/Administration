@@ -329,7 +329,7 @@ pipeline {
         stage('Setup Minikube') {
             steps {
                 script {
-                    // Check if Minikube binary exists and is in PATH
+                    // Check/install Minikube
                     def minikubeExists = bat(script: '''
                         @echo off
                         where minikube >nul 2>nul
@@ -344,7 +344,7 @@ pipeline {
                             mkdir minikube-bin
                             cd minikube-bin
                             curl -Lo minikube.exe https://storage.googleapis.com/minikube/releases/latest/minikube-windows-amd64.exe
-                            echo Minikube downloaded.
+                            echo Minikube downloaded successfully.
                             minikube.exe version
                         '''
                     } else {
@@ -352,36 +352,36 @@ pipeline {
                         bat "minikube version"
                     }
 
-                    // Ensure minikube is in PATH for this pipeline run
+                    // Add to PATH
                     env.PATH = "${MINIKUBE_BIN_PATH};${env.PATH}"
 
                     echo "Checking Minikube health safely..."
 
-                    // THIS IS THE CRITICAL PART - capture status without failing the step
+                    // CRITICAL: Capture status and force exit 0 so Jenkins doesn't fail the step
                     bat '''
                         @echo off
                         minikube status > "%WORKSPACE%\\minikube_status.txt" 2>&1
                         echo %ERRORLEVEL% > "%WORKSPACE%\\minikube_exitcode.txt"
+                        exit /b 0
                     '''
 
                     def statusInfo = readFile('minikube_status.txt').trim()
                     def exitCode = readFile('minikube_exitcode.txt').trim().toInteger()
 
-                    echo "Minikube status exit code: ${exitCode}"
+                    echo "Minikube status exit code (captured): ${exitCode}"
                     echo "Status output:\n${statusInfo}"
 
-                    // If anything is wrong → delete and restart
+                    // Reset if unhealthy
                     if (exitCode != 0 || statusInfo.contains('Stopped') || statusInfo.contains('Error') || !statusInfo.contains('host: Running')) {
-                        echo "⚠️ Minikube cluster is unhealthy or stopped. Performing full reset..."
+                        echo "⚠️ Minikube cluster unhealthy. Full reset..."
                         bat "minikube delete --all --purge"
-                        
-                        echo "Starting Minikube with Docker driver..."
+                        echo "Starting fresh Minikube..."
                         bat "minikube start --driver=docker --cpus=2 --memory=4096 --wait=all"
                     } else {
-                        echo "✅ Minikube is already healthy."
+                        echo "✅ Minikube is healthy."
                     }
 
-                    // Final verification and namespace setup
+                    // Final checks
                     bat "minikube kubectl -- get nodes"
                     bat "minikube kubectl -- create namespace ${NAMESPACE} --dry-run=client -o yaml | minikube kubectl -- apply -f -"
                 }
