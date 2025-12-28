@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: budget-service
-          image: budget-service:1.0
+          image: aziz244/budget-service:1.0
           ports:
             - containerPort: 8003
           resources:

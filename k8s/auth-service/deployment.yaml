@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: auth-service:1.0
+          image: aziz244/auth-service:1.0
           ports:
             - containerPort: 8000
           resources:

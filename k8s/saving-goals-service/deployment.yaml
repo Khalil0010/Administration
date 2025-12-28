@@ -15,6 +15,6 @@ spec:
     spec:
       containers:
         - name: saving-goals-service
-          image: saving-goals-service:1.0
+          image: aziz244/saving-goals-service:1.0
           ports:
             - containerPort: 8004
