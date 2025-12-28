@@ -329,23 +329,32 @@ pipeline {
         stage('Setup Minikube') {
             steps {
                 script {
-                    echo "Checking Minikube status..."
+                    echo "Verifying Minikube is running..."
+                    
                     def minikubeStatus = bat(script: '@minikube status', returnStatus: true)
                     
                     if (minikubeStatus != 0) {
-                        echo "⚠️ Minikube is not running. Starting Minikube..."
-                        bat """
-                            @echo off
-                            minikube start --driver=docker --cpus=4 --memory=4096
+                        error """
+                        ❌ Minikube is not running!
+                        
+                        Please start Minikube before running this pipeline:
+                        
+                        1. Open PowerShell
+                        2. Run: minikube start --driver=docker --cpus=4 --memory=4096
+                        3. Verify: minikube status
+                        4. Re-run this pipeline
+                        
+                        Minikube needs to be started manually the first time as it downloads
+                        a 500MB base image which can take 5-10 minutes.
                         """
-                        echo "✅ Minikube started successfully"
-                    } else {
-                        echo "✅ Minikube is already running"
                     }
                     
-                    // Verify Minikube is accessible
+                    echo "✅ Minikube is running"
                     bat "minikube status"
-                    bat "minikube profile list"
+                    bat "kubectl get nodes"
+                    
+                    // Ensure namespace exists
+                    bat "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
                 }
             }
         }
