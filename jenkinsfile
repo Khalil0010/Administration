@@ -420,11 +420,35 @@ pipeline {
             }
         }
 
+        stage('Debug: Pod Status') {
+            steps {
+                script {
+                    echo "=== Pod Overview ==="
+                    bat "minikube kubectl -- get pods -n ${NAMESPACE} -o wide"
+                    
+                    echo "=== Pod Events ==="
+                    bat "minikube kubectl -- get events -n ${NAMESPACE} --sort-by='.metadata.creationTimestamp'"
+                    
+                    echo "=== Describe Failing Pods ==="
+                    // List all deployments and describe their pods
+                    def deployments = ['analytics-service', 'auth-service', 'budget-service', 'frontend',
+                                    'notification-service', 'saving-goals-service',
+                                    'transaction-service', 'user-service']
+                    deployments.each { dep ->
+                        bat """
+                            echo === Describe pods for ${dep} ===
+                            minikube kubectl -- describe pods -n ${NAMESPACE} -l app=${dep} || echo "No pods found for ${dep}"
+                        """
+                    }
+                }
+            }
+        }
+
         stage('Wait for Deployments') {
             steps {
                 script {
                     echo "Waiting for deployments to be ready..."
-                    bat "minikube kubectl -- wait --for=condition=available --timeout=300s deployment --all -n ${NAMESPACE}"
+                    bat "minikube kubectl -- wait --for=condition=available --timeout=50s deployment --all -n ${NAMESPACE}"
                     echo "✅ All deployments are ready"
                 }
             }
