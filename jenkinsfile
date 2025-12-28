@@ -7,6 +7,7 @@ pipeline {
         IMAGE_TAG              = "1.0"
         KUBECONFIG_CREDENTIALS = "kubeconfig-id"
         NAMESPACE              = "savewise"
+        TRIVY_PATH             = "C:\\trivy\\trivy.exe"  // Adjust this path to your Trivy installation
     }
 
     options {
@@ -21,120 +22,400 @@ pipeline {
             }
         }
 
-        /*stage('Install Dependencies') {
+        // ========== BUILD STAGES ==========
+        stage('Build: Analytics Service') {
             steps {
-                script {
-                    def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
-                    ]
-                    services.each { svc ->
-                        dir(svc) {
-                            bat '"C:\\Users\\HP\\AppData\\Local\\Programs\\Python\\Python313\\python.exe" -m venv venv'
-                            bat '.\\venv\\Scripts\\pip.exe install --upgrade pip'
-                            bat '.\\venv\\Scripts\\pip.exe install -r requirements.txt'
-                        }
-                    }
-                }
-            }
-        }*/
-
-        stage('Build Docker Images') {
-            steps {
-                script {
-                    def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
-                    ]
-                    services.each { svc ->
-                        dir(svc) {
-                            bat "docker build -t ${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG} ."
-                        }
-                    }
+                dir('analytics-service') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/analytics-service:${IMAGE_TAG} ."
                 }
             }
         }
 
-        stage('Run Trivy Scan') {
+        stage('Build: Auth Service') {
             steps {
-                script {
-                    // Assuming Trivy is already installed and in PATH on Windows agent
-                    def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
-                    ]
-                    services.each { svc ->
-                        def image = "${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
-                        echo "Scanning ${image}..."
-
-                        bat """ trivy image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${image}"""
-
-                        echo "⚠ Trivy scan completed for ${svc} (results are informational only)"
-                    }
+                dir('auth-service') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/auth-service:${IMAGE_TAG} ."
                 }
             }
         }
 
-        stage('Push Docker Images') {
+        stage('Build: Budget Service') {
             steps {
-                script {
-                    def services = [
-                        'analytics-service', 'auth-service', 'budget-service',
-                        'frontend', 'notification-service', 'saving-goals-service',
-                        'transaction-service', 'user-service'
-                    ]
-                    services.each { svc ->
-                        bat "docker push ${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
-                    }
+                dir('budget-service') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/budget-service:${IMAGE_TAG} ."
                 }
             }
         }
 
+        stage('Build: Frontend') {
+            steps {
+                dir('frontend') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/frontend:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        stage('Build: Notification Service') {
+            steps {
+                dir('notification-service') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/notification-service:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        stage('Build: Saving Goals Service') {
+            steps {
+                dir('saving-goals-service') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/saving-goals-service:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        stage('Build: Transaction Service') {
+            steps {
+                dir('transaction-service') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/transaction-service:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        stage('Build: User Service') {
+            steps {
+                dir('user-service') {
+                    bat "docker build -t ${DOCKER_REGISTRY}/user-service:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        // ========== TRIVY SCAN STAGES ==========
+        stage('Scan: Analytics Service') {
+            steps {
+                script {
+                    echo "Scanning analytics-service..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/analytics-service:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for analytics-service"
+                }
+            }
+        }
+
+        stage('Scan: Auth Service') {
+            steps {
+                script {
+                    echo "Scanning auth-service..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/auth-service:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for auth-service"
+                }
+            }
+        }
+
+        stage('Scan: Budget Service') {
+            steps {
+                script {
+                    echo "Scanning budget-service..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/budget-service:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for budget-service"
+                }
+            }
+        }
+
+        stage('Scan: Frontend') {
+            steps {
+                script {
+                    echo "Scanning frontend..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/frontend:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for frontend"
+                }
+            }
+        }
+
+        stage('Scan: Notification Service') {
+            steps {
+                script {
+                    echo "Scanning notification-service..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/notification-service:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for notification-service"
+                }
+            }
+        }
+
+        stage('Scan: Saving Goals Service') {
+            steps {
+                script {
+                    echo "Scanning saving-goals-service..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/saving-goals-service:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for saving-goals-service"
+                }
+            }
+        }
+
+        stage('Scan: Transaction Service') {
+            steps {
+                script {
+                    echo "Scanning transaction-service..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/transaction-service:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for transaction-service"
+                }
+            }
+        }
+
+        stage('Scan: User Service') {
+            steps {
+                script {
+                    echo "Scanning user-service..."
+                    bat """
+                        "${TRIVY_PATH}" image --exit-code 0 --no-progress --severity HIGH,CRITICAL ${DOCKER_REGISTRY}/user-service:${IMAGE_TAG}
+                    """
+                    echo "✅ Trivy scan completed for user-service"
+                }
+            }
+        }
+
+        // ========== PUSH STAGES ==========
+        stage('Push: Analytics Service') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/analytics-service:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Push: Auth Service') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/auth-service:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Push: Budget Service') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/budget-service:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Push: Frontend') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/frontend:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Push: Notification Service') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/notification-service:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Push: Saving Goals Service') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/saving-goals-service:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Push: Transaction Service') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/transaction-service:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Push: User Service') {
+            steps {
+                bat "docker push ${DOCKER_REGISTRY}/user-service:${IMAGE_TAG}"
+            }
+        }
+
+        // ========== KUBERNETES DEPLOYMENT ==========
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
                     script {
                         bat 'kubectl apply -f k8s\\namespace.yaml'
-
-                        def services = [
-                            'analytics-service', 'auth-service', 'budget-service',
-                            'frontend', 'notification-service', 'saving-goals-service',
-                            'transaction-service', 'user-service'
-                        ]
-
-                        services.each { svc ->
-                            bat "kubectl apply -f k8s\\${svc}\\deployment.yaml"
-                            bat "kubectl apply -f k8s\\${svc}\\service.yaml"
-                        }
                     }
                 }
             }
         }
 
-        stage('Smoke Test') {
+        stage('Deploy: Analytics Service') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\analytics-service\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\analytics-service\\service.yaml"
+                }
+            }
+        }
+
+        stage('Deploy: Auth Service') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\auth-service\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\auth-service\\service.yaml"
+                }
+            }
+        }
+
+        stage('Deploy: Budget Service') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\budget-service\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\budget-service\\service.yaml"
+                }
+            }
+        }
+
+        stage('Deploy: Frontend') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\frontend\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\frontend\\service.yaml"
+                }
+            }
+        }
+
+        stage('Deploy: Notification Service') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\notification-service\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\notification-service\\service.yaml"
+                }
+            }
+        }
+
+        stage('Deploy: Saving Goals Service') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\saving-goals-service\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\saving-goals-service\\service.yaml"
+                }
+            }
+        }
+
+        stage('Deploy: Transaction Service') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\transaction-service\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\transaction-service\\service.yaml"
+                }
+            }
+        }
+
+        stage('Deploy: User Service') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    bat "kubectl apply -f k8s\\user-service\\deployment.yaml"
+                    bat "kubectl apply -f k8s\\user-service\\service.yaml"
+                }
+            }
+        }
+
+        // ========== SMOKE TESTS ==========
+        stage('Smoke Test: Auth Service') {
             steps {
                 script {
-                    def urls = [
-                        "auth-service"        : "http://auth-service:8000/health",
-                        "user-service"        : "http://user-service:8001/health",
-                        "budget-service"      : "http://budget-service:8003/health",
-                        "frontend"            : "http://frontend:8501",
-                        "transaction-service" : "http://transaction-service:8002/health",
-                        "notification-service": "http://notification-service:8006/health",
-                        "saving-goals-service": "http://saving-goals-service:8004/health",
-                        "analytics-service"   : "http://analytics-service:8005/health"
-                    ]
+                    try {
+                        bat "curl -sSf --max-time 20 http://auth-service:8000/health"
+                        echo "✅ auth-service is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: auth-service unreachable"
+                    }
+                }
+            }
+        }
 
-                    urls.each { name, url ->
-                        try {
-                            bat "curl -sSf --max-time 20 ${url}"
-                            echo "✅ ${name} is healthy"
-                        } catch (Exception e) {
-                            error "❌ Smoke test failed: ${name} unreachable"
-                        }
+        stage('Smoke Test: User Service') {
+            steps {
+                script {
+                    try {
+                        bat "curl -sSf --max-time 20 http://user-service:8001/health"
+                        echo "✅ user-service is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: user-service unreachable"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Transaction Service') {
+            steps {
+                script {
+                    try {
+                        bat "curl -sSf --max-time 20 http://transaction-service:8002/health"
+                        echo "✅ transaction-service is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: transaction-service unreachable"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Budget Service') {
+            steps {
+                script {
+                    try {
+                        bat "curl -sSf --max-time 20 http://budget-service:8003/health"
+                        echo "✅ budget-service is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: budget-service unreachable"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Saving Goals Service') {
+            steps {
+                script {
+                    try {
+                        bat "curl -sSf --max-time 20 http://saving-goals-service:8004/health"
+                        echo "✅ saving-goals-service is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: saving-goals-service unreachable"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Analytics Service') {
+            steps {
+                script {
+                    try {
+                        bat "curl -sSf --max-time 20 http://analytics-service:8005/health"
+                        echo "✅ analytics-service is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: analytics-service unreachable"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Notification Service') {
+            steps {
+                script {
+                    try {
+                        bat "curl -sSf --max-time 20 http://notification-service:8006/health"
+                        echo "✅ notification-service is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: notification-service unreachable"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Frontend') {
+            steps {
+                script {
+                    try {
+                        bat "curl -sSf --max-time 20 http://frontend:8501"
+                        echo "✅ frontend is healthy"
+                    } catch (Exception e) {
+                        error "❌ Smoke test failed: frontend unreachable"
                     }
                 }
             }
