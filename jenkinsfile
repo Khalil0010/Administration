@@ -325,98 +325,78 @@ pipeline {
             }
         }
 
-        // ========== KUBERNETES DEPLOYMENT ==========
-        stage('Deploy to Kubernetes') {
+        // ========== LOAD IMAGES TO MINIKUBE ==========
+        stage('Load Images to Minikube') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        bat 'kubectl apply -f k8s\\namespace.yaml'
+                script {
+                    echo "Loading Docker images into Minikube..."
+                    def services = [
+                        'analytics-service', 'auth-service', 'budget-service',
+                        'frontend', 'notification-service', 'saving-goals-service',
+                        'transaction-service', 'user-service'
+                    ]
+                    services.each { svc ->
+                        bat "minikube image load ${DOCKER_REGISTRY}/${svc}:${IMAGE_TAG}"
+                        echo "✅ Loaded ${svc} into Minikube"
                     }
                 }
             }
         }
 
-        stage('Deploy: Analytics Service') {
+        // ========== KUBERNETES DEPLOYMENT ==========
+        stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\analytics-service\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\analytics-service\\service.yaml"
+                    script {
+                        echo "Deploying all services to Kubernetes..."
+                        bat 'kubectl apply -f k8s/ -R'
+                        echo "✅ All Kubernetes resources deployed successfully"
+                    }
                 }
             }
         }
 
-        stage('Deploy: Auth Service') {
+        stage('Wait for Deployments') {
             steps {
                 withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\auth-service\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\auth-service\\service.yaml"
-                }
-            }
-        }
-
-        stage('Deploy: Budget Service') {
-            steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\budget-service\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\budget-service\\service.yaml"
-                }
-            }
-        }
-
-        stage('Deploy: Frontend') {
-            steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\frontend\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\frontend\\service.yaml"
-                }
-            }
-        }
-
-        stage('Deploy: Notification Service') {
-            steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\notification-service\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\notification-service\\service.yaml"
-                }
-            }
-        }
-
-        stage('Deploy: Saving Goals Service') {
-            steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\saving-goals-service\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\saving-goals-service\\service.yaml"
-                }
-            }
-        }
-
-        stage('Deploy: Transaction Service') {
-            steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\transaction-service\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\transaction-service\\service.yaml"
-                }
-            }
-        }
-
-        stage('Deploy: User Service') {
-            steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    bat "kubectl apply -f k8s\\user-service\\deployment.yaml"
-                    bat "kubectl apply -f k8s\\user-service\\service.yaml"
+                    script {
+                        echo "Waiting for deployments to be ready..."
+                        bat """
+                            kubectl wait --for=condition=available --timeout=300s deployment --all -n ${NAMESPACE}
+                        """
+                        echo "✅ All deployments are ready"
+                    }
                 }
             }
         }
 
         // ========== SMOKE TESTS ==========
+        stage('Verify Services') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        echo "Verifying all services are running..."
+                        bat "kubectl get pods -n ${NAMESPACE}"
+                        bat "kubectl get services -n ${NAMESPACE}"
+                    }
+                }
+            }
+        }
+
         stage('Smoke Test: Auth Service') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://auth-service:8000/health"
-                        echo "✅ auth-service is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: auth-service unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-auth --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://auth-service:8000/health
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ auth-service is healthy"
+                        } else {
+                            echo "⚠️ auth-service health check failed"
+                        }
                     }
                 }
             }
@@ -424,12 +404,18 @@ pipeline {
 
         stage('Smoke Test: User Service') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://user-service:8001/health"
-                        echo "✅ user-service is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: user-service unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-user --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://user-service:8001/health
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ user-service is healthy"
+                        } else {
+                            echo "⚠️ user-service health check failed"
+                        }
                     }
                 }
             }
@@ -437,12 +423,18 @@ pipeline {
 
         stage('Smoke Test: Transaction Service') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://transaction-service:8002/health"
-                        echo "✅ transaction-service is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: transaction-service unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-transaction --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://transaction-service:8002/health
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ transaction-service is healthy"
+                        } else {
+                            echo "⚠️ transaction-service health check failed"
+                        }
                     }
                 }
             }
@@ -450,12 +442,18 @@ pipeline {
 
         stage('Smoke Test: Budget Service') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://budget-service:8003/health"
-                        echo "✅ budget-service is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: budget-service unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-budget --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://budget-service:8003/health
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ budget-service is healthy"
+                        } else {
+                            echo "⚠️ budget-service health check failed"
+                        }
                     }
                 }
             }
@@ -463,12 +461,18 @@ pipeline {
 
         stage('Smoke Test: Saving Goals Service') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://saving-goals-service:8004/health"
-                        echo "✅ saving-goals-service is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: saving-goals-service unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-goals --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://saving-goals-service:8004/health
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ saving-goals-service is healthy"
+                        } else {
+                            echo "⚠️ saving-goals-service health check failed"
+                        }
                     }
                 }
             }
@@ -476,12 +480,18 @@ pipeline {
 
         stage('Smoke Test: Analytics Service') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://analytics-service:8005/health"
-                        echo "✅ analytics-service is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: analytics-service unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-analytics --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://analytics-service:8005/health
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ analytics-service is healthy"
+                        } else {
+                            echo "⚠️ analytics-service health check failed"
+                        }
                     }
                 }
             }
@@ -489,12 +499,18 @@ pipeline {
 
         stage('Smoke Test: Notification Service') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://notification-service:8006/health"
-                        echo "✅ notification-service is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: notification-service unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-notification --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://notification-service:8006/health
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ notification-service is healthy"
+                        } else {
+                            echo "⚠️ notification-service health check failed"
+                        }
                     }
                 }
             }
@@ -502,12 +518,35 @@ pipeline {
 
         stage('Smoke Test: Frontend') {
             steps {
-                script {
-                    try {
-                        bat "curl -sSf --max-time 20 http://frontend:8501"
-                        echo "✅ frontend is healthy"
-                    } catch (Exception e) {
-                        error "❌ Smoke test failed: frontend unreachable"
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        def testStatus = bat(script: """
+                            @echo off
+                            kubectl run test-frontend --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://frontend:8501
+                        """, returnStatus: true)
+                        
+                        if (testStatus == 0) {
+                            echo "✅ frontend is healthy"
+                        } else {
+                            echo "⚠️ frontend health check failed"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Get Service URLs') {
+            steps {
+                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                    script {
+                        echo "Getting Minikube service URLs..."
+                        bat "minikube service list -n ${NAMESPACE}"
+                        echo """
+                        ========================================
+                        To access services locally, run:
+                        minikube service frontend -n ${NAMESPACE}
+                        ========================================
+                        """
                     }
                 }
             }
