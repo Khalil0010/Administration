@@ -329,66 +329,59 @@ pipeline {
         stage('Setup Minikube') {
             steps {
                 script {
-                    // Check/install Minikube (keep your existing logic)
+                    // Check if Minikube binary exists and is in PATH
                     def minikubeExists = bat(script: '''
                         @echo off
                         where minikube >nul 2>nul
                         if %ERRORLEVEL% equ 0 (echo YES) else (echo NO)
                     ''', returnStdout: true).trim()
-                    
+
                     if (minikubeExists.contains('NO')) {
-                        echo "Minikube not found, downloading and installing..."
+                        echo "Minikube not found, downloading..."
                         bat '''
                             @echo off
                             if exist minikube-bin rmdir /s /q minikube-bin
                             mkdir minikube-bin
                             cd minikube-bin
-                            
-                            echo Downloading Minikube...
                             curl -Lo minikube.exe https://storage.googleapis.com/minikube/releases/latest/minikube-windows-amd64.exe
-                            
-                            if not exist minikube.exe (
-                                echo ERROR: Failed to download Minikube!
-                                exit /b 1
-                            )
-                            
-                            echo Minikube installed successfully!
+                            echo Minikube downloaded.
                             minikube.exe version
                         '''
                     } else {
                         echo "Minikube already installed."
                         bat "minikube version"
                     }
-                    
-                    // Add to PATH for this run
+
+                    // Ensure minikube is in PATH for this pipeline run
                     env.PATH = "${MINIKUBE_BIN_PATH};${env.PATH}"
-                    
-                    echo "Checking Minikube health..."
-                    
-                    // *** THIS IS THE FIX: Capture status safely without failing ***
+
+                    echo "Checking Minikube health safely..."
+
+                    // THIS IS THE CRITICAL PART - capture status without failing the step
                     bat '''
                         @echo off
                         minikube status > "%WORKSPACE%\\minikube_status.txt" 2>&1
                         echo %ERRORLEVEL% > "%WORKSPACE%\\minikube_exitcode.txt"
                     '''
-                    
+
                     def statusInfo = readFile('minikube_status.txt').trim()
                     def exitCode = readFile('minikube_exitcode.txt').trim().toInteger()
-                    
+
                     echo "Minikube status exit code: ${exitCode}"
-                    echo "Current Status:\n${statusInfo}"
-                    
-                    // Trigger reset if not fully healthy
+                    echo "Status output:\n${statusInfo}"
+
+                    // If anything is wrong → delete and restart
                     if (exitCode != 0 || statusInfo.contains('Stopped') || statusInfo.contains('Error') || !statusInfo.contains('host: Running')) {
-                        echo "⚠️ Minikube is not healthy. Resetting..."
-                        bat "minikube delete --all --purge"  // --all --purge for cleaner reset on Windows
-                        echo "Starting Minikube fresh..."
+                        echo "⚠️ Minikube cluster is unhealthy or stopped. Performing full reset..."
+                        bat "minikube delete --all --purge"
+                        
+                        echo "Starting Minikube with Docker driver..."
                         bat "minikube start --driver=docker --cpus=2 --memory=4096 --wait=all"
                     } else {
-                        echo "✅ Minikube is healthy."
+                        echo "✅ Minikube is already healthy."
                     }
-                    
-                    // Final checks
+
+                    // Final verification and namespace setup
                     bat "minikube kubectl -- get nodes"
                     bat "minikube kubectl -- create namespace ${NAMESPACE} --dry-run=client -o yaml | minikube kubectl -- apply -f -"
                 }
