@@ -410,9 +410,12 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    echo "Deploying all services to Kubernetes..."
-                    bat "minikube kubectl -- apply -f k8s/ -R -n ${NAMESPACE}"
-                    echo "✅ All Kubernetes resources deployed successfully"
+                    echo "Deploying Kubernetes manifests from k8s/ directory..."
+                    // Apply everything (handles both cluster-scoped and namespaced resources safely)
+                    bat "minikube kubectl -- apply -f k8s/ -R"
+                    // Explicitly set namespace context for any subsequent commands if needed
+                    bat "minikube kubectl -- config set-context --current --namespace=${NAMESPACE}"
+                    echo "✅ All resources deployed successfully in namespace ${NAMESPACE}"
                 }
             }
         }
