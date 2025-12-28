@@ -5,9 +5,9 @@ pipeline {
         GITHUB_REPO            = "https://github.com/Khalil0010/Administration.git"
         DOCKER_REGISTRY        = "aziz244"
         IMAGE_TAG              = "1.0"
-        KUBECONFIG_CREDENTIALS = "kubeconfig-id"
         NAMESPACE              = "savewise"
         TRIVY_PATH             = "${WORKSPACE}\\trivy-bin\\trivy.exe"
+        MINIKUBE_BIN_PATH      = "${WORKSPACE}\\minikube-bin"
     }
 
     options {
@@ -329,6 +329,40 @@ pipeline {
         stage('Setup Minikube') {
             steps {
                 script {
+                    // First, check if Minikube is installed and accessible
+                    def minikubeExists = bat(script: '''
+                        @echo off
+                        where minikube >nul 2>nul
+                        if %ERRORLEVEL% equ 0 (echo YES) else (echo NO)
+                    ''', returnStdout: true).trim()
+                    
+                    if (minikubeExists.contains('NO')) {
+                        echo "Minikube not found, downloading and installing..."
+                        bat '''
+                            @echo off
+                            if exist minikube-bin rmdir /s /q minikube-bin
+                            mkdir minikube-bin
+                            cd minikube-bin
+                            
+                            echo Downloading Minikube...
+                            curl -Lo minikube.exe https://storage.googleapis.com/minikube/releases/latest/minikube-windows-amd64.exe
+                            
+                            if not exist minikube.exe (
+                                echo ERROR: Failed to download Minikube!
+                                exit /b 1
+                            )
+                            
+                            echo Minikube installed successfully!
+                            minikube.exe version
+                        '''
+                    } else {
+                        echo "Minikube already installed."
+                        bat "minikube version"
+                    }
+                    
+                    // Add Minikube bin to PATH for this pipeline
+                    env.PATH = "${MINIKUBE_BIN_PATH};${env.PATH}"
+                    
                     echo "Checking Minikube health..."
                     
                     // Run minikube status, capture output and exit code without failing on non-zero
@@ -356,8 +390,8 @@ pipeline {
                     }
                     
                     // Helpful for debugging if it fails again
-                    bat "kubectl get nodes"
-                    bat "kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
+                    bat "minikube kubectl -- get nodes"
+                    bat "minikube kubectl -- create namespace ${NAMESPACE} --dry-run=client -o yaml | minikube kubectl -- apply -f -"
                 }
             }
         }
@@ -383,26 +417,20 @@ pipeline {
         // ========== KUBERNETES DEPLOYMENT ==========
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        echo "Deploying all services to Kubernetes..."
-                        bat 'kubectl apply -f k8s/ -R'
-                        echo "✅ All Kubernetes resources deployed successfully"
-                    }
+                script {
+                    echo "Deploying all services to Kubernetes..."
+                    bat "minikube kubectl -- apply -f k8s/ -R -n ${NAMESPACE}"
+                    echo "✅ All Kubernetes resources deployed successfully"
                 }
             }
         }
 
         stage('Wait for Deployments') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        echo "Waiting for deployments to be ready..."
-                        bat """
-                            kubectl wait --for=condition=available --timeout=300s deployment --all -n ${NAMESPACE}
-                        """
-                        echo "✅ All deployments are ready"
-                    }
+                script {
+                    echo "Waiting for deployments to be ready..."
+                    bat "minikube kubectl -- wait --for=condition=available --timeout=300s deployment --all -n ${NAMESPACE}"
+                    echo "✅ All deployments are ready"
                 }
             }
         }
@@ -410,30 +438,26 @@ pipeline {
         // ========== SMOKE TESTS ==========
         stage('Verify Services') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        echo "Verifying all services are running..."
-                        bat "kubectl get pods -n ${NAMESPACE}"
-                        bat "kubectl get services -n ${NAMESPACE}"
-                    }
+                script {
+                    echo "Verifying all services are running..."
+                    bat "minikube kubectl -- get pods -n ${NAMESPACE}"
+                    bat "minikube kubectl -- get services -n ${NAMESPACE}"
                 }
             }
         }
 
         stage('Smoke Test: Auth Service') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-auth --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://auth-service:8000/health
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ auth-service is healthy"
-                        } else {
-                            echo "⚠️ auth-service health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-auth --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://auth-service:8000/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ auth-service is healthy"
+                    } else {
+                        echo "⚠️ auth-service health check failed"
                     }
                 }
             }
@@ -441,18 +465,16 @@ pipeline {
 
         stage('Smoke Test: User Service') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-user --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://user-service:8001/health
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ user-service is healthy"
-                        } else {
-                            echo "⚠️ user-service health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-user --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://user-service:8001/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ user-service is healthy"
+                    } else {
+                        echo "⚠️ user-service health check failed"
                     }
                 }
             }
@@ -460,18 +482,16 @@ pipeline {
 
         stage('Smoke Test: Transaction Service') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-transaction --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://transaction-service:8002/health
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ transaction-service is healthy"
-                        } else {
-                            echo "⚠️ transaction-service health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-transaction --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://transaction-service:8002/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ transaction-service is healthy"
+                    } else {
+                        echo "⚠️ transaction-service health check failed"
                     }
                 }
             }
@@ -479,18 +499,16 @@ pipeline {
 
         stage('Smoke Test: Budget Service') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-budget --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://budget-service:8003/health
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ budget-service is healthy"
-                        } else {
-                            echo "⚠️ budget-service health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-budget --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://budget-service:8003/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ budget-service is healthy"
+                    } else {
+                        echo "⚠️ budget-service health check failed"
                     }
                 }
             }
@@ -498,18 +516,16 @@ pipeline {
 
         stage('Smoke Test: Saving Goals Service') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-goals --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://saving-goals-service:8004/health
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ saving-goals-service is healthy"
-                        } else {
-                            echo "⚠️ saving-goals-service health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-goals --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://saving-goals-service:8004/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ saving-goals-service is healthy"
+                    } else {
+                        echo "⚠️ saving-goals-service health check failed"
                     }
                 }
             }
@@ -517,18 +533,16 @@ pipeline {
 
         stage('Smoke Test: Analytics Service') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-analytics --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://analytics-service:8005/health
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ analytics-service is healthy"
-                        } else {
-                            echo "⚠️ analytics-service health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-analytics --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://analytics-service:8005/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ analytics-service is healthy"
+                    } else {
+                        echo "⚠️ analytics-service health check failed"
                     }
                 }
             }
@@ -536,18 +550,16 @@ pipeline {
 
         stage('Smoke Test: Notification Service') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-notification --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://notification-service:8006/health
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ notification-service is healthy"
-                        } else {
-                            echo "⚠️ notification-service health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-notification --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://notification-service:8006/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ notification-service is healthy"
+                    } else {
+                        echo "⚠️ notification-service health check failed"
                     }
                 }
             }
@@ -555,18 +567,16 @@ pipeline {
 
         stage('Smoke Test: Frontend') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        def testStatus = bat(script: """
-                            @echo off
-                            kubectl run test-frontend --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://frontend:8501
-                        """, returnStatus: true)
-                        
-                        if (testStatus == 0) {
-                            echo "✅ frontend is healthy"
-                        } else {
-                            echo "⚠️ frontend health check failed"
-                        }
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-frontend --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://frontend:8501
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ frontend is healthy"
+                    } else {
+                        echo "⚠️ frontend health check failed"
                     }
                 }
             }
@@ -574,17 +584,15 @@ pipeline {
 
         stage('Get Service URLs') {
             steps {
-                withCredentials([file(credentialsId: KUBECONFIG_CREDENTIALS, variable: 'KUBECONFIG')]) {
-                    script {
-                        echo "Getting Minikube service URLs..."
-                        bat "minikube service list -n ${NAMESPACE}"
-                        echo """
-                        ========================================
-                        To access services locally, run:
-                        minikube service frontend -n ${NAMESPACE}
-                        ========================================
-                        """
-                    }
+                script {
+                    echo "Getting Minikube service URLs..."
+                    bat "minikube service list -n ${NAMESPACE}"
+                    echo """
+                    ========================================
+                    To access services locally, run:
+                    minikube service frontend -n ${NAMESPACE}
+                    ========================================
+                    """
                 }
             }
         }
