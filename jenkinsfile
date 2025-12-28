@@ -330,17 +330,26 @@ pipeline {
             steps {
                 script {
                     echo "Checking Minikube health..."
-                    // We check for 'Running' in the output of status
-                    def statusInfo = bat(script: '@minikube status', returnStdout: true).trim()
+                    
+                    // Run minikube status, capture output and exit code without failing on non-zero
+                    bat '''
+                        @echo off
+                        minikube status > "%WORKSPACE%\\minikube_status.txt" 2>&1
+                        echo %ERRORLEVEL% > "%WORKSPACE%\\minikube_exitcode.txt"
+                    '''
+                    
+                    // Read the captured files
+                    def statusInfo = readFile('minikube_status.txt').trim()
+                    def exitCode = readFile('minikube_exitcode.txt').trim().toInteger()
+                    
+                    echo "Minikube status exit code: ${exitCode}"
                     echo "Current Status: ${statusInfo}"
                     
                     if (statusInfo.contains('Stopped') || statusInfo.contains('Error') || !statusInfo.contains('host: Running')) {
                         echo "⚠️ Minikube is in a bad state or stopped. Resetting..."
-                        // Delete ensures we don't try to use a corrupted container
                         bat "minikube delete"
                         
                         echo "Starting Minikube fresh..."
-                        // Reduced resources to ensure stability on the Jenkins host
                         bat "minikube start --driver=docker --cpus=2 --memory=2048 --wait=all"
                     } else {
                         echo "✅ Minikube is healthy."
