@@ -464,60 +464,161 @@ pipeline {
                 }
             }
         }
-        stage('Verify Services & Frontend Accessibility') {
+
+        stage('Smoke Test: Auth Service') {
             steps {
                 script {
-                    echo "=== Listing running pods ==="
-                    bat "minikube kubectl -- get pods -n ${NAMESPACE} -o wide"
-
-                    echo "=== Listing services ==="
-                    bat "minikube kubectl -- get services -n ${NAMESPACE}"
-
-                    echo "=== Simple smoke test: checking if frontend port 8501 is reachable ==="
-                    // Test léger : on vérifie juste que le port répond (pas besoin d'un endpoint /health spécifique)
-                    def frontendStatus = bat(
-                        script: """
-                            @echo off
-                            minikube kubectl -- run test-frontend-smoke --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -s --head --fail --max-time 15 http://frontend:8501
-                        """,
-                        returnStatus: true
-                    )
-
-                    if (frontendStatus == 0) {
-                        echo "✅ Frontend service is responding on port 8501"
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-auth --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://auth-service:8000/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ auth-service is healthy"
                     } else {
-                        echo "ℹ️ Frontend not yet responding (normal during startup or if SPA takes time to load) - continuing..."
+                        echo "⚠️ auth-service health check failed"
                     }
+                }
+            }
+        }
 
-                    echo """
-                    ================================================
-                    🎉 PIPELINE TERMINÉ AVEC SUCCÈS !
+        stage('Smoke Test: User Service') {
+            steps {
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-user --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://user-service:8001/health
+                    """, returnStatus: true)
                     
-                    Pour accéder à l'application SaveWise :
-                    Exécutez cette commande sur votre machine locale :
+                    if (testStatus == 0) {
+                        echo "✅ user-service is healthy"
+                    } else {
+                        echo "⚠️ user-service health check failed"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Transaction Service') {
+            steps {
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-transaction --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://transaction-service:8002/health
+                    """, returnStatus: true)
                     
-                        minikube service frontend -n ${NAMESPACE}
+                    if (testStatus == 0) {
+                        echo "✅ transaction-service is healthy"
+                    } else {
+                        echo "⚠️ transaction-service health check failed"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Budget Service') {
+            steps {
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-budget --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://budget-service:8003/health
+                    """, returnStatus: true)
                     
-                    Cela ouvrira automatiquement l'interface web dans votre navigateur.
-                    ================================================
-                    """
+                    if (testStatus == 0) {
+                        echo "✅ budget-service is healthy"
+                    } else {
+                        echo "⚠️ budget-service health check failed"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Saving Goals Service') {
+            steps {
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-goals --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://saving-goals-service:8004/health
+                    """, returnStatus: true)
                     
-                    // Affichage complet de la liste des services (utile pour le debug)
+                    if (testStatus == 0) {
+                        echo "✅ saving-goals-service is healthy"
+                    } else {
+                        echo "⚠️ saving-goals-service health check failed"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Analytics Service') {
+            steps {
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-analytics --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://analytics-service:8005/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ analytics-service is healthy"
+                    } else {
+                        echo "⚠️ analytics-service health check failed"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Notification Service') {
+            steps {
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-notification --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://notification-service:8006/health
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ notification-service is healthy"
+                    } else {
+                        echo "⚠️ notification-service health check failed"
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test: Frontend') {
+            steps {
+                script {
+                    def testStatus = bat(script: """
+                        @echo off
+                        minikube kubectl -- run test-frontend --image=curlimages/curl:latest --rm -i --restart=Never -n ${NAMESPACE} -- curl -sSf --max-time 10 http://frontend:8501
+                    """, returnStatus: true)
+                    
+                    if (testStatus == 0) {
+                        echo "✅ frontend is healthy"
+                    } else {
+                        echo "⚠️ frontend health check failed"
+                    }
+                }
+            }
+        }
+
+        stage('Get Service URLs') {
+            steps {
+                script {
+                    echo "Getting Minikube service URLs..."
                     bat "minikube service list -n ${NAMESPACE}"
+                    echo """
+                    ========================================
+                    To access services locally, run:
+                    minikube service frontend -n ${NAMESPACE}
+                    ========================================
+                    """
                 }
             }
         }
     }
 
     post {
-        success {
-            echo "🚀 Pipeline succeeded! L'application SaveWise est déployée dans Minikube."
-        }
-        failure {
-            echo "❌ Pipeline failed. Consultez les logs ci-dessus pour diagnostiquer le problème."
-        }
-        always {
-            echo "Nettoyage optionnel si nécessaire (ex: minikube delete peut être manuel)"
-        }
+        success { echo "Pipeline succeeded! 🚀" }
+        failure { echo "Pipeline failed! Check logs. ❌" }
     }
 }
